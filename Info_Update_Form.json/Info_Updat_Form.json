@@ -1,0 +1,228 @@
+{
+  "name": "Info update form",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Information Update Form",
+        "formDescription": "Enter your text to update the database.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Inter Your Text",
+              "fieldType": "textarea"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.5,
+      "position": [
+        -128,
+        -112
+      ],
+      "id": "b876d42a-3171-40a5-9567-f903544ae524",
+      "name": "On form submission",
+      "webhookId": "9e766e4a-856a-4e0f-83cc-ddd9ed5f7a05"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst allChunks = [];\n\nconst CHUNK_SIZE = 800;\nconst OVERLAP_WORDS = 80;\n\nfor (const item of items) {\n  const text = item.json?.['Inter Your Text'] \n          || item.json?.['Enter Your Text'] \n          || item.json?.text \n          || Object.values(item.json)[0] \n          || \"\";\n  const timestamp = item.json?.submittedAt || new Date().toISOString();\n  const source = \"manual_text_input\";\n\n  if (!text.trim()) continue;\n\n  const sentences = text\n    .replace(/\\n\\n+/g, \" <PARA> \")\n    .replace(/\\n/g, \" \")\n    .split(/(?<=[.!?])\\s+(?=[A-Z\"'(])/)\n    .map(s => s.trim())\n    .filter(s => s.length > 0);\n\n  if (sentences.length === 0) sentences.push(text.trim());\n\n  const chunks = [];\n  let cur = [], curWC = 0;\n\n  for (const sent of sentences) {\n    const wc = sent.split(/\\s+/).filter(w => w.length > 0).length;\n    cur.push(sent);\n    curWC += wc;\n\n    if (curWC >= CHUNK_SIZE) {\n      chunks.push({ text: cur.join(\" \").replace(/ <PARA> /g, \"\\n\\n\").trim(), wordCount: curWC });\n      let ov = [], ovW = 0;\n      for (let j = cur.length - 1; j >= 0; j--) {\n        const w = cur[j].split(/\\s+/).filter(x => x.length > 0).length;\n        ovW += w; ov.unshift(cur[j]);\n        if (ovW >= OVERLAP_WORDS) break;\n      }\n      cur = ov; curWC = ovW;\n    }\n  }\n\n  if (cur.length > 0 && curWC > 0) {\n    chunks.push({ text: cur.join(\" \").replace(/ <PARA> /g, \"\\n\\n\").trim(), wordCount: curWC });\n  }\n\n  chunks.forEach((chunk, idx) => {\n    allChunks.push({\n      json: {\n        text: chunk.text,\n        metadata: {\n          source: source,\n          timestamp: timestamp,\n          chunkIndex: idx,\n          totalChunks: chunks.length,\n          wordCount: chunk.wordCount,\n          inputType: \"form_text\"\n        }\n      }\n    });\n  });\n}\n\nreturn allChunks;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        80,
+        -112
+      ],
+      "id": "ea9919e1-794b-40e5-89bd-f996d3a684e5",
+      "name": "Split Into chanks",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "pineconeIndex": {
+          "__rl": true,
+          "value": "Add_Your_Pinecone_Index",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1.3,
+      "position": [
+        288,
+        -112
+      ],
+      "id": "a88d112a-24dc-41bc-9250-cf2701c05864",
+      "name": "Pinecone Vector Store",
+      "credentials": {
+        "pineconeApi": {
+          "id": "XiBR3en5qU2a2Ups",
+          "name": "Pinecone account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsMistralCloud",
+      "typeVersion": 1,
+      "position": [
+        240,
+        112
+      ],
+      "id": "d087ae76-0459-45ca-abe7-094099004e6e",
+      "name": "Embeddings Mistral Cloud",
+      "credentials": {
+        "mistralCloudApi": {
+          "id": "9N6eWSeCZ5atoxbs",
+          "name": "Mistral Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "metadata": {
+            "metadataValues": [
+              {
+                "name": "=source",
+                "value": "={{ $json.metadata.source }}"
+              },
+              {
+                "name": "timestamp",
+                "value": "={{ $json.metadata.timestamp }}"
+              },
+              {
+                "name": "chunkIndex",
+                "value": "={{ $json.metadata.chunkIndex }}"
+              },
+              {
+                "name": "totalChunks",
+                "value": "={{ $json.metadata.totalChunks }}"
+              },
+              {
+                "name": "wordCount",
+                "value": "={{ $json.metadata.wordCount }}"
+              },
+              {
+                "name": "inputType",
+                "value": "={{ $json.metadata.inputType }}"
+              }
+            ]
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        432,
+        96
+      ],
+      "id": "c1a8ef49-aad6-46bb-a15f-22a05850bbab",
+      "name": "Default Data Loader"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://7107.api.greenapi.com/waInstance[idInstance]/sendMessage/[apiTokenInstance]",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "chatId",
+              "value": "91xxxxxxxxxx@c.us"
+            },
+            {
+              "name": "message",
+              "value": "Data Uploded Succesfully"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        640,
+        -112
+      ],
+      "id": "adb6a041-e3ed-4aac-9cf6-50591168b583",
+      "name": "HTTP Request",
+      "executeOnce": true
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "On form submission": {
+      "main": [
+        [
+          {
+            "node": "Split Into chanks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Into chanks": {
+      "main": [
+        [
+          {
+            "node": "Pinecone Vector Store",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Mistral Cloud": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Pinecone Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Default Data Loader": {
+      "ai_document": [
+        [
+          {
+            "node": "Pinecone Vector Store",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pinecone Vector Store": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "4626067f-ccdb-43bd-bd82-5e978645637a",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "fc6057e90fbe4aa1be64752f59e776be28983f0cc603f5c19175e814feba5a3b"
+  },
+  "id": "4gW6NPiUC3auIJqa",
+  "tags": []
+}
