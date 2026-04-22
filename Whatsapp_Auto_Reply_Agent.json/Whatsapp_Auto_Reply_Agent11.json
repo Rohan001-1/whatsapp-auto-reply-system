@@ -1,0 +1,500 @@
+{
+  "name": "Whatsapp Auto Reply Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://7107.api.greenapi.com/waInstance[idInstance]/sendMessage/[apiTokenInstance]",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "chatId",
+              "value": "={{ $('chat id condition').item.json.body.senderData.chatId }}"
+            },
+            {
+              "name": "message",
+              "value": "={{ $json.output }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1376,
+        368
+      ],
+      "id": "1673a22f-bd0b-490e-b99b-29e0bd91783e",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "24f9a787-97a8-4f30-bf01-4d6233f54bac",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -784,
+        384
+      ],
+      "id": "09392421-5b55-4fad-bbc2-41077621c45a",
+      "name": "Webhook",
+      "webhookId": "24f9a787-97a8-4f30-bf01-4d6233f54bac"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsMistralCloud",
+      "typeVersion": 1,
+      "position": [
+        512,
+        832
+      ],
+      "id": "117cddf2-82f5-4b81-b0d0-0fc9426cb7b0",
+      "name": "Embeddings Mistral Cloud",
+      "credentials": {
+        "mistralCloudApi": {
+          "id": "9N6eWSeCZ5atoxbs",
+          "name": "Mistral Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatMistralCloud",
+      "typeVersion": 1,
+      "position": [
+        -576,
+        624
+      ],
+      "id": "6bf4d088-a5f6-421a-bff5-ff6be5bef989",
+      "name": "Mistral Cloud Chat Model1",
+      "credentials": {
+        "mistralCloudApi": {
+          "id": "9N6eWSeCZ5atoxbs",
+          "name": "Mistral Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.body.senderData.chatId }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        -448,
+        624
+      ],
+      "id": "c16e7807-5120-4cfa-aed7-758814457049",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Student Name:{{ $('chat id condition').item.json.body.senderData.senderName }}\nStudent Message: {{ $('Webhook').item.json.body.messageData.textMessageData.textMessage }}\n\nClassification: {{ $json.classification }}\nRelated Parts: {{ JSON.stringify($json.related_parts) }}\nUnrelated Parts: {{ JSON.stringify($json.unrelated_parts) }}\nQuery Type: {{ $json.query_type }}\nTime Sensitive: {{ $json.is_time_sensitive }}",
+        "options": {
+          "systemMessage": "=You are the warm and helpful assistant for Radhey Classes coaching center, Nashik.\nYour job is to craft the perfect reply for the student based on their query.\n\n━━━━━━━━━━━━━━━━━━━━━━━━\nSTEP 1 — TIME SENSITIVE CHECK:\nIf is_time_sensitive = true → call GetDateTime tool FIRST before anything else.\nUse the day and time received to search Pinecone with day-specific keywords.\nExample: if today is Monday → search \"Monday batch\" or \"Monday timing\"\nNever assume or guess current day or time from memory.\n\n━━━━━━━━━━━━━━━━━━━━━━━━\nSTEP 2 — MEMORY CHECK BEFORE PINECONE:\nBefore calling Pinecone, check conversation memory.\nIf the same question was already answered in recent messages → use that answer directly.\nOnly call Pinecone if the answer is not already in memory.\nThis saves time and avoids repeated searches.\n\n━━━━━━━━━━━━━━━━━━━━━━━━\nSTEP 3 — KNOWLEDGE SEARCH:\nFor all class-related questions → search Pinecone using short keywords only.\nNever paste full sentence in search query.\n\nKeyword examples:\n· \"11th science fees kitni hai\" → search: 11th fees\n· \"kaun teacher padhate hain\" → search: teacher faculty\n· \"batch kab hai\" → search: batch timing\n· \"Sunday chutti\" → search: Sunday holiday\n\nIf first search returns nothing → try once more with a shorter/different keyword.\nIf still nothing → use this fallback exactly, never guess:\n\"Iske baare mein exact jaankari abhi mere paas nahi hai 😊\n· Rohan Sir se confirm kar lena — 9766344645\"\n\nNever guess or invent: fees amount, teacher names, seat count, exact dates.\n\n━━━━━━━━━━━━━━━━━━━━━━━━\nSTEP 4 — MIXED QUERY HANDLING:\nYou will receive related_parts and unrelated_parts lists.\n· Answer all questions in related_parts using pinecone, date and time tools\n· For unrelated_parts → add this single line ONCE at the very end of your reply:\n  \"· Me Radhey Classes ka assistant hu, me keval class se related queries ka ans deta hu\"\n· Never explain which questions you skipped\n· Never add this line more than once\n\nIf classification = \"unrelated\" → reply with only:\n\"· Me Radhey Classes ka assistant hu, me keval class se related queries ka ans deta hu\"\nNothing else.\n\n━━━━━━━━━━━━━━━━━━━━━━━━\nSTEP 5 — SENSITIVE TOPICS:\nNever answer these yourself. Always redirect warmly:\n· Fee discount, waiver, concession\n· Installment request\n· Refund\n· Complaint about teacher or staff\n· Admission seat confirmation\n· Payment issue\n· Parent wanting direct conversation\n\nRedirect format:\n\"Iske liye Rohan Sir se directly baat karna best rahega 😊\n· Rohan Sir — 9766344645\"\n\nCustomize the first line naturally based on their situation.\nExample for discount: \"Fees ke baare mein Sir best bata paayenge 😊\"\nExample for complaint: \"Aapki baat important hai, Sir se seedha share karo 😊\"\n\n━━━━━━━━━━━━━━━━━━━━━━━━\nSTEP 6 — ANSWER DEPTH:\nMatch the depth of answer to what was asked:\n· Student asks only \"fees?\" → give fee amount + installment option if available\n· Student asks \"full details\" or \"sab batao\" → give complete structured info\n· Student asks single quick question → 1 to 2 lines only\n· Student asks multiple questions → answer each one separately in clean format\n\n━━━━━━━━━━━━━━━━━━━━━━━━\n\nSTEP 7 — OUTPUT FORMAT RULES:\n\nEvery reply must follow this exact structure:\n\n[situation emoji] *[SHORT TITLE IN CAPS]*\n\n· [main answer point]\n  - [subpoint if needed]\n  - [subpoint if needed]\n\n· [next point if multiple]\n  - [subpoint]\n\nTITLE RULES:\n- Always bold using *Title* format\n- Keep title 2 to 4 words only\n- Match title to topic:\n  · Fees question → *FEES DETAILS*\n  · Timing question → *BATCH TIMING*\n  · Teacher question → *FACULTY INFO*\n  · Unrelated → no title needed\n  · Redirect → no title needed\n\nEMOJI RULES — use situation-wise, once per reply:\n  · Good news / info → 📚\n  · Timing / schedule → 🕐\n  · Fees → 💰\n  · Redirect to Sir → 📞\n  · Unrelated query → 🙏\n\nEXAMPLE OUTPUT:\n📚 *FEES DETAILS*\n\n· 11th Science: ₹18,000/year\n  - Installment available\n  - Registration: ₹500\n\n· Combo (11th + 12th): ₹36,000\n  - Best value option"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        288,
+        368
+      ],
+      "id": "ec1278f8-99b3-44e9-8241-eacb51780e1f",
+      "name": "Output Sender"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('chat id condition').item.json.body.senderData.chatId }}",
+        "contextWindowLength": 10
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        352,
+        624
+      ],
+      "id": "063fdb96-68f7-44fc-8c9d-6e0002d660fc",
+      "name": "Simple Memory1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "63bb234a-8c47-4f15-b601-acbc794ad360",
+              "leftValue": "={{ $json.classification }}",
+              "rightValue": "related",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "5eb480bb-a761-413f-87bc-7348b264beac",
+              "leftValue": "={{ $json.classification }}",
+              "rightValue": "mixed",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        48,
+        384
+      ],
+      "id": "d3c9e243-962e-4979-97c9-86378c5bde18",
+      "name": "msg relation conditionn"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dateTimeTool",
+      "typeVersion": 2,
+      "position": [
+        688,
+        512
+      ],
+      "id": "7bd40818-feb2-44fc-9212-d4b85cc1aee1",
+      "name": "Date & Time"
+    },
+    {
+      "parameters": {
+        "options": {
+          "maxRetries": 4
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatMistralCloud",
+      "typeVersion": 1,
+      "position": [
+        240,
+        608
+      ],
+      "id": "1291b250-66c0-482e-bcaf-9ac79d54abbf",
+      "name": "Mistral Cloud Chat Model",
+      "credentials": {
+        "mistralCloudApi": {
+          "id": "9N6eWSeCZ5atoxbs",
+          "name": "Mistral Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ─── Parse Classifier JSON Output Safely ───\nconst rawText = $json.output || $json.text || $json.response || '';\nconst extractedData = $('clasifyer').first().json;\n\nlet parsed;\ntry {\n  let cleaned = rawText\n    .replace(/```json/gi, '')\n    .replace(/```/g, '')\n    .trim();\n\n  const jsonMatch = cleaned.match(/\\{[\\s\\S]*\\}/);\n  if (jsonMatch) cleaned = jsonMatch[0];\n\n  parsed = JSON.parse(cleaned);\n} catch (e) {\n  parsed = {\n    classification: 'related',\n    related_parts: [extractedData.messageText],\n    unrelated_parts: [],\n    query_type: 'general',\n    is_time_sensitive: false,\n    messageText: extractedData.messageText\n  };\n}\n\nconst validClassifications = ['related', 'unrelated', 'mixed'];\nconst validLanguages = ['hindi', 'english', 'hinglish'];\n\nreturn [{\n  json: {\n    classification:    validClassifications.includes(parsed.classification) ? parsed.classification : 'related',\n    related_parts:     Array.isArray(parsed.related_parts)   ? parsed.related_parts   : [extractedData.messageText],\n    unrelated_parts:   Array.isArray(parsed.unrelated_parts) ? parsed.unrelated_parts : [],\n    detected_language: validLanguages.includes(parsed.detected_language)   ? parsed.detected_language : 'hinglish',\n    is_time_sensitive: !!parsed.is_time_sensitive,\n    query_type:        parsed.query_type || 'general',\n    chatId:            extractedData.chatId,\n    senderName:        extractedData.senderName,\n    messageText:       extractedData.messageText\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -160,
+        384
+      ],
+      "id": "94333839-3214-4d4d-9543-42190ef58d03",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolDescription": "Class-related queries include: fees amount, annual or course fee, installment options, installment due dates, late payment penalty, teacher names by subject, subject availability, batch timings, morning or evening batch, and number of students per batch.",
+        "pineconeIndex": {
+          "__rl": true,
+          "value": "Add_Your_Pinecone_Index",
+          "mode": "id"
+        },
+        "topK": 8,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1.3,
+      "position": [
+        496,
+        640
+      ],
+      "id": "9dbe2dcb-bee7-4ba9-a5e6-5b091ebfa455",
+      "name": "Pinecone Vector Store",
+      "credentials": {
+        "pineconeApi": {
+          "id": "XiBR3en5qU2a2Ups",
+          "name": "Pinecone account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ─── Clean Agent Output ───\nconst agentOutput = $json.output || '';\nconst chatId = $('Code in JavaScript').first().json.chatId;\nconst detectedLanguage = $('Code in JavaScript').first().json.detected_language || 'hinglish';\n\nlet clean = agentOutput\n  .replace(/\\*\\*(.*?)\\*\\*/g, '$1')\n  .replace(/\\*(.*?)\\*/g, '$1')\n  .replace(/^\\s*[-*+]\\s+/gm, '· ')\n  .replace(/^\\s*\\d+\\.\\s+/gm, '· ')\n  .replace(/#{1,6}\\s+/g, '')\n  .replace(/`{1,3}[^`]*`{1,3}/g, '')\n  .trim();\n\nclean = clean\n  .split('\\n')\n  .map(line => line.trimEnd())\n  .join('\\n');\n\nreturn [{ json: { output: clean, chatId, detectedLanguage } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        816,
+        368
+      ],
+      "id": "75d31ad7-3f3a-4bbf-9437-4b3a359f15f1",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatMistralCloud",
+      "typeVersion": 1,
+      "position": [
+        976,
+        608
+      ],
+      "id": "4e508d91-e990-482c-b283-ba7689593ba9",
+      "name": "Mistral Cloud Chat Model2",
+      "credentials": {
+        "mistralCloudApi": {
+          "id": "9N6eWSeCZ5atoxbs",
+          "name": "Mistral Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.body.messageData.textMessageData.textMessage }}",
+        "options": {
+          "systemMessage": "You are a message classification engine for Radhey Classes coaching center.\nYour ONLY job is to analyze the student message and return a JSON object.\nYou do NOT answer questions. You do NOT greet. You ONLY classify and return JSON.\n\n━━━━━━━━━━━━━━━━━━━━━━━━\nSTEP 1 — CHECK MEMORY FIRST:\nBefore classifying, read the conversation history carefully.\nIf the current message is short, vague, or seems like a follow-up\n(examples: \"aur batao\", \"details do\", \"kitna?\", \"kab hai?\", \"wahi wala\", \"haan\", \"ok aur?\")\n→ Check what the student was asking about in the last 1-2 messages\n→ If that topic was class-related → classify current message as \"related\" too\n→ Never classify a follow-up as \"unrelated\" just because it looks incomplete alone\n\n━━━━━━━━━━━━━━━━━━━━━━━━\nSTEP 2 — CLASSIFY:\nRadhey Classes topics:\nclass schedules, batch timings, fees, teachers, syllabus, subjects,\nbatch names, attendance, holidays, exam dates, results, admission, timetable, assignments\n\nCheck every part of the student message separately:\n· All parts class-related → classification = \"related\"\n· No parts class-related → classification = \"unrelated\"  \n· Some related, some not → classification = \"mixed\"\n\nFor mixed → list each part correctly:\n· related_parts → only class-related questions\n· unrelated_parts → only non-class questions\n\n━━━━━━━━━━━━━━━━━━━━━━━━\nSTEP 3 — QUERY TYPE:\nPick exactly one from this list:\n\"schedule\" → class timing, timetable, batch schedule\n\"fees\" → fee amount, payment, installment\n\"teacher\" → faculty name, who is teaching\n\"syllabus\" → topics, chapters, subjects\n\"batch\" → batch name, batch details\n\"admission\" → how to join, enrollment\n\"sensitive\" → discount, refund, complaint, special request\n\"greeting\" → only hi/hello/namaste with no question\n\"general\" → class-related but no specific type above\n\"out_of_scope\" → completely unrelated to coaching\n\n━━━━━━━━━━━━━━━━━━━━━━━━\nSTEP 4 — TIME SENSITIVITY:\nSet is_time_sensitive = true if message contains anything like:\naaj, today, aajcha, kal, tomorrow, abhi, right now, chalu, chalu ahe ka,\nchutti, band, aaj ki class, aaj kaun teacher, kal holiday hai kya,\nclass chal rahi hai kya, is waqt, koncha din, kaunsa din\n\nOtherwise set is_time_sensitive = false\n\nSTEP 5 — DETECT LANGUAGE:\nDetect the language of the CURRENT message only:\n· Hindi (Devanagari script) → \"hindi\"\n· English (Latin script) → \"english\"\n· Hinglish (Roman script Hindi/Urdu words in Roman letters mixed with English) → \"hinglish\"\n\nNote: If message is in Devanagari script — always classify as \"hindi\".\nDefault fallback: \"hinglish\"\n━━━━━━━━━━━━━━━━━━━━━━━━\nOUTPUT RULE — CRITICAL:\nReturn ONLY this JSON. No extra text. No explanation. No markdown. Nothing else.\n\n{\n  \"classification\": \"related\" or \"unrelated\" or \"mixed\",\n  \"related_parts\": [\"question 1\", \"question 2\"],\n  \"unrelated_parts\": [\"question 1\"],\n  \"query_type\": \"schedule\" or \"fees\" or \"teacher\" or \"syllabus\" or \"batch\" or \"admission\" or \"sensitive\" or \"greeting\" or \"general\" or \"out_of_scope\",\n  \"is_time_sensitive\": true or false,\n  \"messageText\": \"exact original student message here\"\n}\n\nIf all related → unrelated_parts = []\nIf all unrelated → related_parts = []"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -512,
+        384
+      ],
+      "id": "36ca7acd-9ba8-4c0a-839f-3e523f69c67b",
+      "name": "clasifyer"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Target language: {{ $json.detectedLanguage }}\n\nText:\n{{ $json.output }}",
+        "options": {
+          "systemMessage": "You are a precise translator for a WhatsApp coaching assistant.\n\nYou will receive a target language and a text with · bullet points.\n\nYour job:\n· Translate the text into the exact target language specified\n· If target language is \"hindi\" → translate to Hindi in Devanagari script\n· If target language is \"english\" → translate to English\n· If target language is \"hinglish\" → translate to Hinglish (Hindi words in Roman/English script mixed with English naturally)\n\n. Do not mix language use and translate only on targeted language   \n\nStrict rules:\n· Keep every · (middle dot) bullet point exactly as is — do not remove or change\n· Do NOT add any intro, explanation, or extra lines\n· Do NOT change the number of lines or bullet points\n· If text is already in the target language — return it exactly as received, unchanged\n· Output ONLY the translated text — nothing else\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1040,
+        368
+      ],
+      "id": "1867c96b-a2b4-4464-aa78-cccb8a1380d3",
+      "name": "Translater"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "clasifyer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Mistral Cloud": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Pinecone Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mistral Cloud Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "clasifyer",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "clasifyer",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Output Sender": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory1": {
+      "ai_memory": [
+        [
+          {
+            "node": "Output Sender",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "msg relation conditionn": {
+      "main": [
+        [
+          {
+            "node": "Output Sender",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Date & Time": {
+      "ai_tool": [
+        [
+          {
+            "node": "Output Sender",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mistral Cloud Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Output Sender",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "msg relation conditionn",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pinecone Vector Store": {
+      "ai_tool": [
+        [
+          {
+            "node": "Output Sender",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Translater",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mistral Cloud Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Translater",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "clasifyer": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        []
+      ]
+    },
+    "Translater": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "586738e4-984e-4aa2-86ea-87ce5647a8ee",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "fc6057e90fbe4aa1be64752f59e776be28983f0cc603f5c19175e814feba5a3b"
+  },
+  "id": "2ckxS2ob7lB47m5N",
+  "tags": []
+}
